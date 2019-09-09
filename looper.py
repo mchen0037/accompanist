@@ -1,6 +1,11 @@
 import mido
 import time
-from transformations import calc_octave_down
+
+"""
+Hold pedal to "record" notes to loop.
+Let go to play along to the loop.
+Double tap to delete the recording.
+"""
 
 left = 64
 right = 65
@@ -94,11 +99,11 @@ notes = {
     107: 'B7',
     108: 'C8'
 }
-computer_should_play = True
+computer_should_record = True
 init = False
 init_time = None
-last_time = None
-time_between_notes = 0.1
+time_since_last_pedal = None
+time_between_notes = 0.25
 
 # A message has:
 #   note (key)
@@ -114,28 +119,35 @@ def handle_message(message):
     message: mido.Message
     """
     global note_queue
-    global computer_should_play
+    global computer_should_record
     global init
     global init_time
-    global last_time
+    global time_since_last_pedal
 
     if message.type == 'note_on':
-        if computer_should_play:
+        if computer_should_record:
             print("in  << %s (%s) at velocity %s" % (notes[message.note], message.note ,message.velocity))
-            note_queue.insert(0, calc_octave_down(message, time_between_notes))
+            note_queue.insert(0, message)
 
     elif message.type == 'control_change':
         # print("Pedal on" if message.value == 127 else "Pedal off" )
         if not init:
             init = True
+            time_since_last_pedal = time.time()
         else:
+            # If the pedal is double tapped, we should clear the queue.
             if message.value == 127:
-                computer_should_play = False
-                note_queue = []
-                print('computer should not play.')
+                if time_since_last_pedal + 0.25 >= time.time():
+                    print('double tap! clearing note_queue.')
+                    note_queue = []
+                    time_since_last_pedal = time.time()
+                    return
+                print('computer should record.')
+                computer_should_record = True
+                time_since_last_pedal = time.time()
             else:
-                print('computer should play.')
-                computer_should_play = True
+                print('computer should not record.')
+                computer_should_record = False
 
 input_name = mido.get_input_names()[0]
 input_port = mido.open_input(input_name, callback=handle_message)
@@ -147,7 +159,7 @@ def main():
     global note_queue
     global input_port
     global output_port
-    global computer_should_play
+    global computer_should_record
     global init_time
     global last_time
 
@@ -158,13 +170,14 @@ def main():
     print("Play!")
 
     while True:
-        time.sleep(0.01)
+        time.sleep(0.25)
         try:
-            if note_queue and computer_should_play:
+            if note_queue:
                 if time.time() >= note_queue[-1].time:
-                    msg = note_queue.pop()
-                    print("out << %s (%s) at velocity %s" % (notes[msg.note], msg.note, msg.velocity))
-                    output_port.send(msg)
+                    for msg in note_queue:
+                        # msg = note_queue.pop()
+                        print("out << %s (%s) at velocity %s" % (notes[msg.note], msg.note, msg.velocity))
+                        output_port.send(msg)
         except Exception as e:
             pass
 

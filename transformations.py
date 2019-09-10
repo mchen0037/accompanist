@@ -1,7 +1,7 @@
 import mido
 import time
 
-def calc_octave_down(msg, time_between_notes):
+def calc_octave_down(msg, time_between_notes=0):
     """
     Returns a note that is an octave down from the note that is input.
 
